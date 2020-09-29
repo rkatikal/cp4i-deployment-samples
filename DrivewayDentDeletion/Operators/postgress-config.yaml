@@ -1,0 +1,15 @@
+apiVersion: v1
+data:
+  postgres.env: |2
+      MEMORY_LIMIT=2Gi
+      NAMESPACE=openshift
+      DATABASE_SERVICE_NAME=postgresql
+      POSTGRESQL_USER=admin
+      POSTGRESQL_PASSWORD=password
+      POSTGRESQL_DATABASE=sampledb
+      VOLUME_CAPACITY=1Gi
+      POSTGRESQL_VERSION=9.6
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: postgres
