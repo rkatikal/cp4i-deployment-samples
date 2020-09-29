@@ -1,22 +1,3 @@
-kind: Role
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: tekton-triggers-role
-rules:
-# Permissions for every EventListener deployment to function
-- apiGroups: ["triggers.tekton.dev"]
-  resources: ["eventlisteners", "triggerbindings", "triggertemplates"]
-  verbs: ["get"]
-- apiGroups: [""]
-# secrets are only needed for Github/Gitlab interceptors, serviceaccounts only for per trigger authorization
-  resources: ["configmaps", "secrets", "serviceaccounts"]
-  verbs: ["get", "list", "watch"]
-# Permissions to create resources in associated TriggerTemplates
-- apiGroups: ["tekton.dev"]
-  resources: ["pipelineruns", "pipelineresources", "taskruns"]
-  verbs: ["create"]
----
-
 # Ace Integration Service account configuration
 kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
@@ -27,10 +8,10 @@ rules:
 - apiGroups: ["appconnect.ibm.com"]
   resources: ["designerauthorings", "dashboards", "switchservers", "configurations", "integrationservers"]
   verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
-# Permission to get pods
+# Permission to get pods during deploy stage
 - apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["list", "get"]
+  resources: ["pods", "pods/exec", "configmaps", "secrets", "serviceaccounts"]
+  verbs: ["list", "get", "create", "delete"]
 
 
 ---
@@ -47,5 +28,5 @@ rules:
   verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
 # Permission to get pods during deploy stage
 - apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["list", "get"]
+  resources: ["pods", "pods/exec", "configmaps", "secrets", "serviceaccounts"]
+  verbs: ["list", "get", "create", "delete"]
