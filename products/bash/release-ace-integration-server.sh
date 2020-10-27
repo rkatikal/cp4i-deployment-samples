@@ -30,7 +30,7 @@ function usage {
 
 namespace="cp4i"
 is_release_name="ace-is"
-is_image_name="image-registry.openshift-image-registry.svc:5000/cp4i/ace-11.0.0.9-r2:new-1"
+is_image_name=""
 tracing_namespace=""
 tracing_enabled="false"
 CURRENT_DIR=$(dirname $0)
@@ -61,8 +61,8 @@ while getopts "n:r:i:z:t" opt; do
 done
 
 if [ "$tracing_enabled" == "true" ] ; then
-   if [ -z "$tracing_namespace" ]; then tracing_namespace=${namespace} ; fi  
-else 
+   if [ -z "$tracing_namespace" ]; then tracing_namespace=${namespace} ; fi
+else
     # assgining value to tracing_namespace b/c empty values causes CR to throw an error
     tracing_namespace=${namespace}
 fi
@@ -99,19 +99,25 @@ spec:
      runtime:
        image: ${is_image_name}
   configurations:
+  - ace-keystore
   - ace-policyproject-ddd
+  - ace-serverconf
+  - ace-setdbparms
+  - application.kdb
+  - application.sth
+  - application.jks
   designerFlowsOperationMode: disabled
   license:
     accept: true
-    license: L-AMYG-BQ2E4U
+    license: L-APEH-BPUCJK
     use: CloudPakForIntegrationProduction
   replicas: 2
   router:
     timeout: 120s
   service:
-    endpointType: http
+    endpointType: https
   useCommonServices: true
-  version: 11.0.0.9-r3
+  version: 11.0.0.10-r1
   tracing:
     enabled: ${tracing_enabled}
     namespace: ${tracing_namespace}
@@ -154,8 +160,10 @@ jqVersionCheck=$(jq --version)
 
 if [ $? -ne 0 ]; then
   jqInstalled=false
+  JQ=./jq
 else
   jqInstalled=true
+  JQ=jq
 fi
 
 if [[ "$jqInstalled" == "false" ]]; then
@@ -168,16 +176,17 @@ if [[ "$jqInstalled" == "false" ]]; then
     echo "INFO: Installing on MAC"
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
     brew install jq
+    JQ=jq
   fi
 fi
 
-echo -e "\nINFO: Installed JQ version is $(./jq --version)"
+echo -e "\nINFO: Installed JQ version is $($JQ --version)"
 
 echo -e "\n----------------------------------------------------------------------------------------------------------------------------------------------------------\n"
 
 # -------------------------------------- FIND TOTAL ACE REPLICAS DEPLOYED -----------------------------------------------
 
-numberOfReplicas=$(oc get integrationservers $is_release_name -n $namespace -o json | ./jq -r '.spec.replicas')
+numberOfReplicas=$(oc get integrationservers $is_release_name -n $namespace -o json | $JQ -r '.spec.replicas')
 echo "INFO: Number of Replicas for '$is_release_name' is $numberOfReplicas"
 echo -e "\nINFO: Total number of ACE integration server '$is_release_name' related pods after deployment should be $numberOfReplicas"
 echo -e "\n----------------------------------------------------------------------------------------------------------------------------------------------------------\n"
@@ -209,7 +218,7 @@ while [ $numberOfMatchesForImageTag -ne $numberOfReplicas ]; do
 
   echo -e "\nINFO: For ACE Integration server '$is_release_name':"
   for eachAcePod in $allCorrespondingPods; do
-    imageInPod=$(oc get pod $eachAcePod -n $namespace -o json | ./jq -r '.spec.containers[0].image')
+    imageInPod=$(oc get pod $eachAcePod -n $namespace -o json | $JQ -r '.spec.containers[0].image')
     echo "INFO: Image present in the pod '$eachAcePod' is '$imageInPod'"
     if [[ $imageInPod == *:$imageTag ]]; then
       echo "INFO: Image tag matches.."

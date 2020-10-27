@@ -60,12 +60,10 @@ while getopts "n:r:i:q:z:t" opt; do
   esac
 done
 
-
-
 # when called from install.sh
 if [ "$tracing_enabled" == "true" ] ; then
-   if [ -z "$tracing_namespace" ]; then tracing_namespace=${namespace} ; fi  
-else 
+   if [ -z "$tracing_namespace" ]; then tracing_namespace=${namespace} ; fi
+else
     # assgining value to tracing_namespace b/c empty values causes CR to throw an error
     tracing_namespace=${namespace}
 fi
@@ -122,6 +120,38 @@ if [[ -z "$imageTag" ]]; then
   exit 1
 fi
 
+echo "INFO: Setting up certs for MQ TLS"
+QM_KEY=$(cat $CURRENT_DIR/mq/createcerts/server.key | base64 -w0)
+QM_CERT=$(cat $CURRENT_DIR/mq/createcerts/server.crt | base64 -w0)
+APP_CERT=$(cat $CURRENT_DIR/mq/createcerts/application.crt | base64 -w0)
+
+cat << EOF | oc apply -f -
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: mtlsmqsc
+  namespace: $namespace
+data:
+  example.ini: |-
+    Service:
+      Name=AuthorizationService
+      EntryPoints=14
+      SecurityPolicy=User
+---
+kind: Secret
+apiVersion: v1
+metadata:
+  name: mqcert
+  namespace: $namespace
+data:
+  tls.key: $QM_KEY
+  tls.crt: $QM_CERT
+  app.crt: $APP_CERT
+type: Opaque
+EOF
+
+
 echo -e "INFO: Going ahead to apply the CR for '$release_name'"
 
 echo -e "\n----------------------------------------------------------------------------------------------------------------------------------------------------------\n"
@@ -137,6 +167,20 @@ spec:
     accept: true
     license: L-RJON-BN7PN3
     use: NonProduction
+  pki:
+    keys:
+      - name: default
+        secret:
+          items:
+            - tls.key
+            - tls.crt
+          secretName: mqcert
+    trust:
+      - name: app
+        secret:
+          items:
+            - app.crt
+          secretName: mqcert
   queueManager:
     image: ${image_name}
     imagePullPolicy: Always
@@ -144,12 +188,17 @@ spec:
     storage:
       queueManager:
         type: ephemeral
+    ini:
+      - configMap:
+          items:
+            - example.ini
+          name: mtlsmqsc
   template:
     pod:
       containers:
         - env:
-            - name: MQSNOAUT
-              value: 'yes'
+            - name: MQS_PERMIT_UNKNOWN_ID
+              value: 'true'
           name: qmgr
   version: 9.2.0.0-r1
   web:
@@ -169,9 +218,9 @@ if [ $? -ne 0 ] && [ "$tracing_enabled" == "true"  ] ; then
         echo "INFO: Running with test environment flag"
         echo "ERROR: Failed to register tracing in project '$namespace'"
         exit 1
-      fi   
+      fi
  else
-    if [ "$tracing_enabled" == "false" ]; then 
+    if [ "$tracing_enabled" == "false" ]; then
         echo "[INFO] Tracing Registration not need. Tracing set to $tracing_enabled"
      else
         echo "[INFO] secret icp4i-od-store-cred exist, no need to run tracing registration"

@@ -29,12 +29,17 @@ function usage {
 
 namespace="cp4i"
 dashboard_release_name="ace-dashboard-demo"
-
-while getopts "n:r:" opt; do
+storage="ibmc-file-gold-gid"
+production="false"
+while getopts "n:r:s:p" opt; do
   case ${opt} in
     n ) namespace="$OPTARG"
       ;;
     r ) dashboard_release_name="$OPTARG"
+      ;;
+    s ) storage="$OPTARG"
+      ;;
+    p ) production="true"
       ;;
     \? ) usage; exit
       ;;
@@ -45,6 +50,15 @@ echo "INFO: Release ACE Dashboard..."
 echo "INFO: Namepace: '$namespace'"
 echo "INFO: Dashboard Release Name: '$dashboard_release_name'"
 
+use="CloudPakForIntegrationNonProduction"
+
+if [[ "$production" == "true" ]]
+then 
+echo "Production Mode Enabled"
+use="CloudPakForIntegrationProduction"
+
+fi
+
 cat << EOF | oc apply -f -
 apiVersion: appconnect.ibm.com/v1beta1
 kind: Dashboard
@@ -54,11 +68,13 @@ metadata:
 spec:
   license:
     accept: true
-    license: L-AMYG-BQ2E4U
-    use: CloudPakForIntegrationNonProduction
+    license: L-APEH-BPUCJK
+    use: ${use}
   replicas: 1
   storage:
-    class: ibmc-file-gold-gid
+    class: ${storage}
+    size: 5Gi
     type: persistent-claim
-  version: 11.0.0.9
+  useCommonServices: true
+  version: 11.0.0.10
 EOF

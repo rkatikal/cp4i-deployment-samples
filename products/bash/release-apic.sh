@@ -31,8 +31,9 @@ function usage {
 namespace="cp4i"
 release_name="ademo"
 tracing="false"
+production="false"
 
-while getopts "n:r:t" opt; do
+while getopts "n:r:tp" opt; do
   case ${opt} in
     n ) namespace="$OPTARG"
       ;;
@@ -40,10 +41,18 @@ while getopts "n:r:t" opt; do
       ;;
     t ) tracing=true
       ;;
+    p ) production="true"
+    ;;
     \? ) usage; exit
       ;;
   esac
 done
+
+profile="n3xc4.m16"
+if [[ "$production" == "true" ]]; then
+  echo "Production Mode Enabled"
+  profile="n12xc4.m12"
+fi
 
 cat << EOF | oc apply -f -
 apiVersion: apiconnect.ibm.com/v1beta1
@@ -51,28 +60,18 @@ kind: APIConnectCluster
 metadata:
   name: ${release_name}
   namespace: ${namespace}
+  labels:
+    app.kubernetes.io/instance: apiconnect
+    app.kubernetes.io/managed-by: ibm-apiconnect
+    app.kubernetes.io/name: apiconnect-production
 spec:
-  appVersion: 10.0.0.0
+  version: 10.0.1.0
   license:
     accept: true
     use: production
-  profile: n3xc4.m16
+  profile: ${profile}
   gateway:
     openTracing:
       enabled: ${tracing}
       odTracingNamespace: ${namespace}
 EOF
-
-time=0
-while [ ! "$(oc get cm -n ${namespace} ${release_name}-a7s-mtls-gw)" ]; do
-  if [ $time -gt 30 ]; then
-    echo "ERROR: No configmap called ${release_name}-a7s-mtls-gw was found"
-    exit 1
-  fi
-  echo "INFO: Waiting for configmap ${release_name}-a7s-mtls-gw Waited ${time} minute(s)."
-  time=$((time+1))
-  sleep 60
-done
-
-oc get cm -n ${namespace} ${release_name}-a7s-mtls-gw -o yaml | sed "s#server_names_hash_bucket_size 128#server_names_hash_bucket_size 256#g"| oc apply -f-
-
