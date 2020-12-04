@@ -21,9 +21,9 @@
 #   With default values
 #     ./test-api-e2e.sh
 
-function usage {
-    echo "Usage: $0 -n <NAMESPACE> -r <RELEASE> -p <NAMESPACE_SUFFIX> -s <USER_DB_SUFFIX> -a"
-    exit 1
+function usage() {
+  echo "Usage: $0 -n <NAMESPACE> -r <RELEASE> -p <NAMESPACE_SUFFIX> -s <USER_DB_SUFFIX> -a"
+  exit 1
 }
 
 CURRENT_DIR=$(dirname $0)
@@ -32,9 +32,7 @@ CROSS="\xE2\x9D\x8C"
 NAMESPACE="cp4i"
 RELEASE="ademo"
 APIC=false
-APP="ddd-app"
 os_sed_flag=""
-ORG="main-demo"
 
 if [[ $(uname) == Darwin ]]; then
   os_sed_flag="-e"
@@ -42,18 +40,25 @@ fi
 
 while getopts "n:r:p:s:a" opt; do
   case ${opt} in
-    n ) NAMESPACE="$OPTARG"
-      ;;
-    r ) RELEASE="$OPTARG"
-      ;;
-    p ) NAMESPACE_SUFFIX="$OPTARG"
-      ;;
-    s ) USER_DB_SUFFIX="$OPTARG"
-      ;;
-    a ) APIC=true
-      ;;
-    \? ) usage; exit
-      ;;
+  n)
+    NAMESPACE="$OPTARG"
+    ;;
+  r)
+    RELEASE="$OPTARG"
+    ;;
+  p)
+    NAMESPACE_SUFFIX="$OPTARG"
+    ;;
+  s)
+    USER_DB_SUFFIX="$OPTARG"
+    ;;
+  a)
+    APIC=true
+    ;;
+  \?)
+    usage
+    exit
+    ;;
   esac
 done
 
@@ -63,24 +68,16 @@ echo "Namespace passed: $NAMESPACE"
 echo "User name suffix: $USER_DB_SUFFIX"
 
 MAIN_NAMESPACE=${NAMESPACE}
-if $APIC; then
-  PLATFORM_API_EP=$(oc get route -n $MAIN_NAMESPACE ${RELEASE}-mgmt-platform-api -o jsonpath="{.spec.host}")
-  [[ -z $PLATFORM_API_EP ]] && echo -e "[ERROR] ${CROSS} APIC platform api route doesn't exit" && exit 1
-  $DEBUG && echo "[DEBUG] PLATFORM_API_EP=${PLATFORM_API_EP}"
-fi
+
 # check if the namespace is dev or test
 if [[ "$NAMESPACE_SUFFIX" == "dev" ]]; then
   NAMESPACE="${NAMESPACE}"
 else
   echo "Namespace suffix: $NAMESPACE_SUFFIX"
   NAMESPACE="${NAMESPACE}-${NAMESPACE_SUFFIX}"
-  ORG="ddd-demo-test"
 fi
-CATALOG=${ORG}-catalog
 
-echo "Namespace for postgres: $NAMESPACE"
 echo -e "\n----------------------------------------------------------------------------------------------------------------------------------------------------------\n"
-
 
 # -------------------------------------- INSTALL JQ ---------------------------------------------------------------------
 
@@ -117,64 +114,14 @@ echo -e "\n---------------------------------------------------------------------
 # BASE_PATH=/basepath, all ready contains /
 HOST=https://$(oc get routes -n ${NAMESPACE} | grep ace-api-int-srv-https | awk '{print $2}')/drivewayrepair
 if [[ $APIC == true ]]; then
-  OUTPUT=""
-  function handle_res {
-    local body=$1
-    local status=$(echo ${body} | $JQ -r ".status")
-    $DEBUG && echo "[DEBUG] res body: ${body}"
-    $DEBUG && echo "[DEBUG] res status: ${status}"
-    if [[ $status == "null" ]]; then
-      OUTPUT="${body}"
-    elif [[ $status == "400" ]]; then
-      if [[ $body == *"already exists"* ]]; then
-        OUTPUT="${body}"
-        echo "[INFO]  Resource already exists, continuing..."
-      else
-        echo -e "[ERROR] ${CROSS} Got 400 bad request"
-        exit 1
-      fi
-    elif [[ $status == "409" ]]; then
-      OUTPUT="${body}"
-      echo "[INFO]  Resource already exists, continuing..."
-    else
-      echo -e "[ERROR] ${CROSS} Request failed: ${body}..."
-      exit 1
-    fi
-  }
-
   # Grab bearer token
-  echo "[INFO]  Getting bearer token..."
-  TOKEN=$(${CURRENT_DIR}/../../products/bash/get-apic-token.sh -n $MAIN_NAMESPACE -r $RELEASE)
-  $DEBUG && echo "[DEBUG] Bearer token: ${TOKEN}"
-  echo -e "[INFO]  ${TICK} Got bearer token"
-
-  # Get api endpoint
-  BASE_PATH=$(grep 'basePath:' ${CURRENT_DIR}/../../products/bash/api.yaml | head -1 | awk '{print $2}')
-  HOST="https://$(oc get route -n $MAIN_NAMESPACE ${RELEASE}-gw-gateway -o jsonpath='{.spec.host}')/$ORG/$CATALOG$BASE_PATH"
-
-  # Get client id
-  echo "[INFO]  Getting client id..."
-  RES=$(curl -kLsS https://$PLATFORM_API_EP/api/catalogs/$ORG/$CATALOG/credentials \
-    -H "accept: application/json" \
-    -H "authorization: Bearer ${TOKEN}")
-  handle_res "${RES}"
-  CLIENT_ID=$(echo "${OUTPUT}" | $JQ -r '.results[] | select(.name | contains("'${APP}'")).client_id')
+  echo "[INFO]  Getting the host and client id..."
+  HOST=$(oc get secret -n ${NAMESPACE} ddd-api-endpoint-client-id -o jsonpath='{.data.api}' | base64 --decode)
+  CLIENT_ID=$(oc get secret -n ${NAMESPACE} ddd-api-endpoint-client-id -o jsonpath='{.data.cid}' | base64 --decode)
   $DEBUG && echo "[DEBUG] Client id: ${CLIENT_ID}"
   [[ $CLIENT_ID == "null" ]] && echo -e "[ERROR] ${CROSS} Couldn't get client id" && exit 1
-
-  # Store api endpoint & client id in secret
-  cat << EOF | oc apply -n ${NAMESPACE} -f -
-apiVersion: v1
-kind: Secret
-metadata:
-  name: ddd-api-endpoint-client-id
-type: Opaque
-stringData:
-  api: ${HOST}
-  cid: ${CLIENT_ID}
-EOF
-  echo -e "[INFO]  ${TICK} Got client id"
 fi
+
 echo "INFO: Host: ${HOST}"
 
 DB_USER=$(echo ${NAMESPACE}_${USER_DB_SUFFIX} | sed 's/-/_/g')
@@ -187,7 +134,7 @@ echo -e "\n---------------------------------------------------------------------
 
 echo -e "INFO: Testing E2E API now..."
 
-API_AUTH=$(oc get secret -n $NAMESPACE ace-api-creds -o json | $JQ -r '.data.auth')
+API_AUTH=$(oc get secret -n $NAMESPACE ace-api-creds-ddd -o json | $JQ -r '.data.auth')
 echo "api auth: $API_AUTH"
 
 # ------- Post to the database -------
@@ -272,8 +219,8 @@ if [ "$post_response_code" == "200" ]; then
   echo -e "\nINFO: Confirming the deletion of the row with the quote id '$quote_id' from database '${DB_NAME}' as the user '${DB_USER}'..."
   oc exec -n postgres -it ${DB_POD} \
     -- psql -U ${DB_USER} -d ${DB_NAME} -c \
-    "SELECT * FROM quotes WHERE quotes.quoteid=${quote_id};" \
-    | grep '0 rows'
+    "SELECT * FROM quotes WHERE quotes.quoteid=${quote_id};" |
+    grep '0 rows'
 
   if [ $? -eq 0 ]; then
     echo -e "\n$TICK INFO: Successfully confirmed deletion of row with quote id '$quote_id'"
