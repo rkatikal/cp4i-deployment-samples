@@ -27,10 +27,24 @@ spec:
         - name: output
           workspace: git-source
 
-    # MQ build in dev namespace
-    - name: build-mq
+    - name: fixup-dockerfiles
       runAfter:
         - clone-git-source
+      taskRef:
+        name: run-script
+      params:
+        - name: script
+          value: "products/bash/fixup-dockerfiles.sh"
+        - name: params
+          value: " -n {{NAMESPACE}}"
+      workspaces:
+        - name: git-source
+          workspace: git-source
+
+    # MQ build for dev
+    - name: build-mq
+      runAfter:
+        - fixup-dockerfiles
       taskRef:
         name: build-task
       params:
@@ -48,7 +62,7 @@ spec:
         - name: git-source
           workspace: git-source
 
-    # MQ deploy in dev namesapce
+    # MQ deploy for dev
     - name: deploy-wait-mq
       runAfter:
         - build-mq
@@ -60,7 +74,7 @@ spec:
         - name: imageName
           value: "mq-ddd"
         - name: releaseName
-          value: "mq-ddd-qm"
+          value: "mq-ddd-qm-dev"
         - name: releaseScript
           value: release-mq.sh
         - name: namespace
@@ -69,17 +83,17 @@ spec:
         - name: git-source
           workspace: git-source
 
-    # build all ace in dev namespace
+    # build all ace for dev
     - name: build-ace-int-server-ace-api
       runAfter:
-        - clone-git-source
+        - fixup-dockerfiles
       taskRef:
         name: build-task
       params:
         - name: imageTag
           value: "$(params.imageTag)"
         - name: imageName
-          value: "ace-api"
+          value: "ddd-ace-api"
         - name: dockerfile
           value: "ACE-API.Dockerfile"
         - name: contextPath
@@ -89,16 +103,17 @@ spec:
       workspaces:
         - name: git-source
           workspace: git-source
+
     - name: build-ace-int-server-ace-acme
       runAfter:
-        - clone-git-source
+        - fixup-dockerfiles
       taskRef:
         name: build-task
       params:
         - name: imageTag
           value: "$(params.imageTag)"
         - name: imageName
-          value: "ace-acme"
+          value: "ddd-ace-acme"
         - name: dockerfile
           value: "ACE-Acme.Dockerfile"
         - name: contextPath
@@ -108,16 +123,17 @@ spec:
       workspaces:
         - name: git-source
           workspace: git-source
+
     - name: build-ace-int-server-ace-bernie
       runAfter:
-        - clone-git-source
+        - fixup-dockerfiles
       taskRef:
         name: build-task
       params:
         - name: imageTag
           value: "$(params.imageTag)"
         - name: imageName
-          value: "ace-bernie"
+          value: "ddd-ace-bernie"
         - name: dockerfile
           value: "ACE-Bernie.Dockerfile"
         - name: contextPath
@@ -127,16 +143,17 @@ spec:
       workspaces:
         - name: git-source
           workspace: git-source
+
     - name: build-ace-int-server-ace-chris
       runAfter:
-        - clone-git-source
+        - fixup-dockerfiles
       taskRef:
         name: build-task
       params:
         - name: imageTag
           value: "$(params.imageTag)"
         - name: imageName
-          value: "ace-chris"
+          value: "ddd-ace-chris"
         - name: dockerfile
           value: "ACE-Chris.Dockerfile"
         - name: contextPath
@@ -147,7 +164,7 @@ spec:
         - name: git-source
           workspace: git-source
 
-    # deploy all ace in dev namespace
+    # deploy all ace for dev
     - name: deploy-wait-ace-api
       runAfter:
         - build-ace-int-server-ace-api
@@ -157,16 +174,19 @@ spec:
         - name: imageTag
           value: "$(params.imageTag)"
         - name: imageName
-          value: "ace-api"
+          value: "ddd-ace-api"
         - name: releaseName
-          value: "ace-api-int-srv"
+          value: "ddd-dev-ace-api"
         - name: releaseScript
           value: release-ace-integration-server.sh
         - name: namespace
           value: "{{NAMESPACE}}"
+        - name: acePolicyProjectParam
+          value: "-d policyproject-ddd-dev"
       workspaces:
         - name: git-source
           workspace: git-source
+
     - name: deploy-wait-ace-bernie
       runAfter:
         - build-ace-int-server-ace-bernie
@@ -176,16 +196,19 @@ spec:
         - name: imageTag
           value: "$(params.imageTag)"
         - name: imageName
-          value: "ace-bernie"
+          value: "ddd-ace-bernie"
         - name: releaseName
-          value: "ace-bernie-int-srv"
+          value: "ddd-dev-ace-bernie"
         - name: releaseScript
           value: release-ace-integration-server.sh
         - name: namespace
           value: "{{NAMESPACE}}"
+        - name: acePolicyProjectParam
+          value: "-d policyproject-ddd-dev"
       workspaces:
         - name: git-source
           workspace: git-source
+
     - name: deploy-wait-ace-acme
       runAfter:
         - build-ace-int-server-ace-acme
@@ -195,16 +218,19 @@ spec:
         - name: imageTag
           value: "$(params.imageTag)"
         - name: imageName
-          value: "ace-acme"
+          value: "ddd-ace-acme"
         - name: releaseName
-          value: "ace-acme-int-srv"
+          value: "ddd-dev-ace-acme"
         - name: releaseScript
           value: release-ace-integration-server.sh
         - name: namespace
           value: "{{NAMESPACE}}"
+        - name: acePolicyProjectParam
+          value: "-d policyproject-ddd-dev"
       workspaces:
         - name: git-source
           workspace: git-source
+
     - name: deploy-wait-ace-chris
       runAfter:
         - build-ace-int-server-ace-chris
@@ -214,13 +240,15 @@ spec:
         - name: imageTag
           value: "$(params.imageTag)"
         - name: imageName
-          value: "ace-chris"
+          value: "ddd-ace-chris"
         - name: releaseName
-          value: "ace-chris-int-srv"
+          value: "ddd-dev-ace-chris"
         - name: releaseScript
           value: release-ace-integration-server.sh
         - name: namespace
           value: "{{NAMESPACE}}"
+        - name: acePolicyProjectParam
+          value: "-d policyproject-ddd-dev"
       workspaces:
         - name: git-source
           workspace: git-source
@@ -236,16 +264,15 @@ spec:
       taskRef:
         name: api-test-e2e
       params:
-        - name: namespaceSuffix
-          #this will not be appended to the namespace name in the test-api-e2e script
-          value: "dev"
         - name: suffix
           value: "ddd"
+        - name: dddType
+          value: "dev"
       workspaces:
         - name: git-source
           workspace: git-source
 
-    # push ace images to test namespace
+    # push ace images for test
     - name: image-push-to-test-ace-chris
       runAfter:
         - test-e2e-api-in-dev-namespace
@@ -255,9 +282,10 @@ spec:
         - name: imageTag
           value: "$(params.imageTag)"
         - name: imageName
-          value: "ace-chris"
+          value: "ddd-ace-chris"
         - name: pvc
           value: "buildah-ace-chris"
+
     - name: image-push-to-test-ace-acme
       runAfter:
         - test-e2e-api-in-dev-namespace
@@ -267,9 +295,10 @@ spec:
         - name: imageTag
           value: "$(params.imageTag)"
         - name: imageName
-          value: "ace-acme"
+          value: "ddd-ace-acme"
         - name: pvc
           value: "buildah-ace-acme"
+
     - name: image-push-to-test-ace-bernie
       runAfter:
         - test-e2e-api-in-dev-namespace
@@ -279,9 +308,10 @@ spec:
         - name: imageTag
           value: "$(params.imageTag)"
         - name: imageName
-          value: "ace-bernie"
+          value: "ddd-ace-bernie"
         - name: pvc
           value: "buildah-ace-bernie"
+
     - name: image-push-to-test-ace-api
       runAfter:
         - test-e2e-api-in-dev-namespace
@@ -291,7 +321,7 @@ spec:
         - name: imageTag
           value: "$(params.imageTag)"
         - name: imageName
-          value: "ace-api"
+          value: "ddd-ace-api"
         - name: pvc
           value: "buildah-ace-api"
 
@@ -311,12 +341,11 @@ spec:
 
     # --------------------------------- IN TEST NAMESPACE ---------------------------------------------
 
-    # Deploy MQ in test namespace
+    # Deploy MQ for test
     - name: deploy-wait-mq-test
       runAfter:
         - image-push-to-test-mq
       taskRef:
-        # name: deploy-test-task
         name: deploy-task
       params:
         - name: imageTag
@@ -324,11 +353,11 @@ spec:
         - name: imageName
           value: "mq-ddd"
         - name: releaseName
-          value: "mq-ddd-qm"
+          value: "mq-ddd-qm-test"
         - name: releaseScript
           value: release-mq.sh
         - name: namespace
-          value: "{{NAMESPACE}}-ddd-test"
+          value: "{{NAMESPACE}}"
       workspaces:
         - name: git-source
           workspace: git-source
@@ -338,19 +367,20 @@ spec:
       runAfter:
         - image-push-to-test-ace-api
       taskRef:
-        # name: deploy-test-task
         name: deploy-task
       params:
         - name: imageTag
           value: "$(params.imageTag)-test"
         - name: imageName
-          value: "ace-api"
+          value: "ddd-ace-api"
         - name: releaseName
-          value: "ace-api-int-srv"
+          value: "ddd-test-ace-api"
         - name: releaseScript
           value: release-ace-integration-server.sh
         - name: namespace
-          value: "{{NAMESPACE}}-ddd-test"
+          value: "{{NAMESPACE}}"
+        - name: acePolicyProjectParam
+          value: "-d policyproject-ddd-test"
       workspaces:
         - name: git-source
           workspace: git-source
@@ -360,19 +390,20 @@ spec:
       runAfter:
         - image-push-to-test-ace-bernie
       taskRef:
-        # name: deploy-test-task
         name: deploy-task
       params:
         - name: imageTag
           value: "$(params.imageTag)-test"
         - name: imageName
-          value: "ace-bernie"
+          value: "ddd-ace-bernie"
         - name: releaseName
-          value: "ace-bernie-int-srv"
+          value: "ddd-test-ace-bernie"
         - name: releaseScript
           value: release-ace-integration-server.sh
         - name: namespace
-          value: "{{NAMESPACE}}-ddd-test"
+          value: "{{NAMESPACE}}"
+        - name: acePolicyProjectParam
+          value: "-d policyproject-ddd-test"
       workspaces:
         - name: git-source
           workspace: git-source
@@ -382,19 +413,20 @@ spec:
       runAfter:
         - image-push-to-test-ace-acme
       taskRef:
-        # name: deploy-test-task
         name: deploy-task
       params:
         - name: imageTag
           value: "$(params.imageTag)-test"
         - name: imageName
-          value: "ace-acme"
+          value: "ddd-ace-acme"
         - name: releaseName
-          value: "ace-acme-int-srv"
+          value: "ddd-test-ace-acme"
         - name: releaseScript
           value: release-ace-integration-server.sh
         - name: namespace
-          value: "{{NAMESPACE}}-ddd-test"
+          value: "{{NAMESPACE}}"
+        - name: acePolicyProjectParam
+          value: "-d policyproject-ddd-test"
       workspaces:
         - name: git-source
           workspace: git-source
@@ -404,19 +436,20 @@ spec:
       runAfter:
         - image-push-to-test-ace-chris
       taskRef:
-        # name: deploy-test-task
         name: deploy-task
       params:
         - name: imageTag
           value: "$(params.imageTag)-test"
         - name: imageName
-          value: "ace-chris"
+          value: "ddd-ace-chris"
         - name: releaseName
-          value: "ace-chris-int-srv"
+          value: "ddd-test-ace-chris"
         - name: releaseScript
           value: release-ace-integration-server.sh
         - name: namespace
-          value: "{{NAMESPACE}}-ddd-test"
+          value: "{{NAMESPACE}}"
+        - name: acePolicyProjectParam
+          value: "-d policyproject-ddd-test"
       workspaces:
         - name: git-source
           workspace: git-source
@@ -432,10 +465,10 @@ spec:
       taskRef:
         name: api-test-e2e
       params:
-        - name: namespaceSuffix
-          value: "ddd-test"
         - name: suffix
           value: "ddd"
+        - name: dddType
+          value: "test"
       workspaces:
         - name: git-source
           workspace: git-source

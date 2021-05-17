@@ -32,8 +32,7 @@ tick="\xE2\x9C\x85"
 cross="\xE2\x9D\x8C"
 all_done="\xF0\x9F\x92\xAF"
 SUFFIX="eei"
-POSTGRES_NAMESPACE="postgres"
-ACE_CONFIGURATION_NAME="ace-policyproject-$SUFFIX"
+POSTGRES_NAMESPACE=
 PG_PORT=5432
 TICK_MILLIS=1000
 MOBILE_TEST_ROWS=10
@@ -49,9 +48,12 @@ while getopts "n:" opt; do
   esac
 done
 
+POSTGRES_NAMESPACE=${POSTGRES_NAMESPACE:-$namespace}
+
 CURRENT_DIR=$(dirname $0)
 echo "INFO: Current directory: '$CURRENT_DIR'"
 echo "INFO: Namespace: '$namespace'"
+echo "INFO: Postgres namespace: '$POSTGRES_NAMESPACE'"
 echo "INFO: Suffix for the postgres is: '$SUFFIX'"
 
 if [[ -z "${namespace// /}" ]]; then

@@ -11,6 +11,7 @@
 #******************************************************************************
 # PARAMETERS:
 #   -c : <ace_policy_names> (boolean), Parameter for changing ace config
+#   -d : <POLICY_PROJECT_TYPE> (string), Policyproject configuration, Defaults to "policyproject-ddd-dev"
 #   -i : <is_image_name> (string), Defaults to "image-registry.openshift-image-registry.svc:5000/cp4i/ace-11.0.0.9-r2:new-1"
 #   -n : <namespace> (string), Defaults to "cp4i"
 #   -p : <ace_replicas> (int), allow changing the number of pods (replicas), Defaults to 2
@@ -23,12 +24,7 @@
 #     ./release-ace-integration-server.sh
 #
 #   Overriding the namespace and release-name
-#     ./release-ace-integration-server -n cp4i -r cp4i-bernie-ace
-
-function usage() {
-  echo "Usage: $0 -c <ace_policy_names> -i <is_image_name> -n <namespace> -p <ace_replicas> -r <is_release_name> -t -z <tracing_namespace>"
-  exit 1
-}
+#     ./release-ace-integration-server -d policyproject-ddd-test -n cp4i -r cp4i-bernie-ace
 
 tick="\xE2\x9C\x85"
 cross="\xE2\x9D\x8C"
@@ -38,14 +34,26 @@ is_release_name="ace-is"
 tracing_enabled="false"
 tracing_namespace=""
 CURRENT_DIR=$(dirname $0)
-ace_policy_names="[keystore-ddd, policyproject-ddd, serverconf-ddd, setdbparms-ddd, application.kdb, application.sth, application.jks]"
+POLICY_PROJECT_TYPE="policyproject-ddd-dev"
 ace_replicas="2"
-echo "Current directory: $CURRENT_DIR"
 
-while getopts "c:i:n:p:r:tz:" opt; do
+function divider() {
+  echo -e "\n-------------------------------------------------------------------------------------------------------------------\n"
+}
+
+function usage() {
+  echo "Usage: $0 -c <ace_policy_names> -d <POLICY_PROJECT_TYPE> -i <is_image_name> -n <namespace> -p <ace_replicas> -r <is_release_name> -t -z <tracing_namespace>"
+  divider
+  exit 1
+}
+
+while getopts "c:d:i:n:p:r:tz:" opt; do
   case ${opt} in
   c)
     ace_policy_names="$OPTARG"
+    ;;
+  d)
+    POLICY_PROJECT_TYPE="$OPTARG"
     ;;
   i)
     is_image_name="$OPTARG"
@@ -71,11 +79,20 @@ while getopts "c:i:n:p:r:tz:" opt; do
   esac
 done
 
+source $CURRENT_DIR/license-helper.sh
+echo "[DEBUG] ACE license: $(getACELicense $namespace)"
+
+echo "Current directory: $CURRENT_DIR"
+
 if [ "$tracing_enabled" == "true" ]; then
   if [ -z "$tracing_namespace" ]; then tracing_namespace=${namespace}; fi
 else
   # assigning value to tracing_namespace b/c empty values causes CR to throw an error
   tracing_namespace=${namespace}
+fi
+
+if [[ -z "${ace_policy_names// /}" ]]; then
+  ace_policy_names="[keystore-ddd, $POLICY_PROJECT_TYPE, serverconf-ddd, setdbparms-ddd, application.kdb, application.sth, application.jks]"
 fi
 
 echo -e "\nINFO: ACE policy configurations: '$ace_policy_names'"
@@ -97,7 +114,7 @@ echo "[INFO] tracing is set to $tracing_enabled"
 
 echo -e "INFO: Going ahead to apply the CR for '$is_release_name'"
 
-echo -e "\n----------------------------------------------------------------------------------------------------------------------------------------------------------\n"
+divider
 
 cat <<EOF | oc apply -f -
 apiVersion: appconnect.ibm.com/v1beta1
@@ -106,27 +123,36 @@ metadata:
   name: ${is_release_name}
   namespace: ${namespace}
 spec:
-  pod:
-   containers:
-     runtime:
-       image: ${is_image_name}
+  adminServerSecure: true
   configurations: $ace_policy_names
   designerFlowsOperationMode: disabled
   license:
     accept: true
-    license: L-APEH-BPUCJK
-    use: CloudPakForIntegrationProduction
+    license: $(getACELicense $namespace)
+    use: CloudPakForIntegrationNonProduction
+  pod:
+   containers:
+     runtime:
+       image: ${is_image_name}
+       resources:
+         limits:
+           cpu: 300m
+           memory: 300Mi
+         requests:
+           cpu: 300m
+           memory: 300Mi
   replicas: ${ace_replicas}
   router:
     timeout: 120s
   service:
     endpointType: https
   useCommonServices: true
-  version: 11.0.0.10-r1
+  version: 11.0.0.11-r2
   tracing:
     enabled: ${tracing_enabled}
     namespace: ${tracing_namespace}
 EOF
+
 if [[ "$?" != "0" ]]; then
   echo -e "$cross [ERROR] Failed to apply IntegrationServer CR"
   exit 1
@@ -144,24 +170,10 @@ if [ "$tracing_enabled" == "true" ]; then
     fi
     sleep 10
   done
-
-  # -------------------------------------- Register Tracing ---------------------------------------------------------------------
-  if ! oc get secrets icp4i-od-store-cred -n ${namespace}; then
-    echo "[INFO] secret icp4i-od-store-cred does not exist in ${namespace}, running tracing registration"
-    echo "Tracing_Namespace= ${tracing_namespace}"
-    echo "Namespace= ${namespace}"
-    if ! ${CURRENT_DIR}/register-tracing.sh -n $tracing_namespace -a ${namespace}; then
-      echo "INFO: Running with test environment flag"
-      echo "ERROR: Failed to register tracing in project '$namespace'"
-      exit 1
-    fi
-  else
-    echo "[INFO] secret icp4i-od-store-cred exist, no need to run tracing registration"
-  fi
 fi
 # -------------------------------------- INSTALL JQ ---------------------------------------------------------------------
 
-echo -e "\n----------------------------------------------------------------------------------------------------------------------------------------------------------\n"
+divider
 
 echo -e "\nINFO: Checking if jq is pre-installed..."
 jqInstalled=false
@@ -191,14 +203,14 @@ fi
 
 echo -e "\nINFO: Installed JQ version is $($JQ --version)"
 
-echo -e "\n----------------------------------------------------------------------------------------------------------------------------------------------------------\n"
+divider
 
 # -------------------------------------- FIND TOTAL ACE REPLICAS DEPLOYED -----------------------------------------------
 
 numberOfReplicas=$(oc get integrationservers $is_release_name -n $namespace -o json | $JQ -r '.spec.replicas')
 echo "INFO: Number of Replicas for '$is_release_name' is $numberOfReplicas"
 echo -e "\nINFO: Total number of ACE integration server '$is_release_name' related pods after deployment should be $numberOfReplicas"
-echo -e "\n----------------------------------------------------------------------------------------------------------------------------------------------------------\n"
+divider
 
 # -------------------------------------- CHECK FOR NEW IMAGE DEPLOYMENT STATUS ------------------------------------------
 
@@ -211,7 +223,7 @@ time=0
 while [ "$numberOfMatchesForImageTag" -ne "$numberOfReplicas" ]; do
   if [ $time -gt 90 ]; then
     echo "ERROR: Timed-out trying to wait for all $is_release_name demo pods to be deployed with a new image containing the image tag '$imageTag'"
-    echo -e "\n----------------------------------------------------------------------------------------------------------------------------------------------------------\n"
+    divider
     exit 1
   fi
 
@@ -223,7 +235,7 @@ while [ "$numberOfMatchesForImageTag" -ne "$numberOfReplicas" ]; do
     allCorrespondingPods=$(oc get pods -n $namespace | grep $is_release_name | grep 1/1 | grep Running | awk '{print $1}')
   fi
 
-  echo "[INFO] Total pods for ACE Integration Server $allCorrespondingPods"
+  echo -e "[INFO] Total pods for ACE Integration Server:\n$allCorrespondingPods"
 
   echo -e "\nINFO: For ACE Integration server '$is_release_name':"
   for eachAcePod in $allCorrespondingPods; do
@@ -239,9 +251,9 @@ while [ "$numberOfMatchesForImageTag" -ne "$numberOfReplicas" ]; do
 
   echo -e "\nINFO: Total $is_release_name demo pods deployed with new image: $numberOfMatchesForImageTag"
   echo -e "\nINFO: All current $is_release_name demo pods are:\n"
-  oc get pods -n $namespace | grep $is_release_name | grep 1/1 | grep Running
+  oc get pods -n $namespace | grep $is_release_name | grep Running
   if [[ $? -eq 1 ]]; then
-    echo -e "No Ready and Running pods found for $is_release_name yet"
+    echo -e "No pods found for $is_release_name yet"
   fi
   if [[ $numberOfMatchesForImageTag != "$numberOfReplicas" ]]; then
     echo -e "\nINFO: Not all $is_release_name pods have been deployed with the new image having the image tag '$imageTag', retrying for upto 10 minutes for new $is_release_name demo pods to be deployed with new image. Waited ${time} minute(s)."
@@ -250,8 +262,7 @@ while [ "$numberOfMatchesForImageTag" -ne "$numberOfReplicas" ]; do
     echo -e "\nINFO: All $is_release_name demo pods have been deployed with the new image"
   fi
   time=$((time + 1))
-  echo -e "\n----------------------------------------------------------------------------------------------------------------------------------------------------------"
-
+  divider
 done
 
 GOT_SERVICE=false

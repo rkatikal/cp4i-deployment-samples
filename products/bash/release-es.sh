@@ -53,6 +53,12 @@ while getopts "n:r:pc:" opt; do
   esac
 done
 
+json=$(oc get configmap -n $namespace operator-info -o json 2> /dev/null)
+if [[ $? == 0 ]]; then
+  METADATA_NAME=$(echo $json | tr '\r\n' ' ' | jq -r '.data.METADATA_NAME')
+  METADATA_UID=$(echo $json | tr '\r\n' ' ' | jq -r '.data.METADATA_UID')
+fi
+
 if [ "$production" == "true" ]; then
   echo "Production Mode Enabled"
   cat <<EOF | oc apply -f -
@@ -61,8 +67,15 @@ kind: EventStreams
 metadata:
   name: ${release_name}
   namespace: ${namespace}
+  $(if [[ ! -z ${METADATA_UID} && ! -z ${METADATA_NAME} ]]; then
+  echo "ownerReferences:
+    - apiVersion: integration.ibm.com/v1beta1
+      kind: Demo
+      name: ${METADATA_NAME}
+      uid: ${METADATA_UID}"
+  fi)
 spec:
-  version: 10.1.0
+  version: 10.2.0-eus
   license:
     accept: true
     use: CloudPakForIntegrationProduction
@@ -113,8 +126,15 @@ kind: EventStreams
 metadata:
   name: ${release_name}
   namespace: ${namespace}
+  $(if [[ ! -z ${METADATA_UID} && ! -z ${METADATA_NAME} ]]; then
+  echo "ownerReferences:
+    - apiVersion: integration.ibm.com/v1beta1
+      kind: Demo
+      name: ${METADATA_NAME}
+      uid: ${METADATA_UID}"
+  fi)
 spec:
-  version: 10.1.0
+  version: 10.3.0
   license:
     accept: true
     use: CloudPakForIntegrationNonProduction

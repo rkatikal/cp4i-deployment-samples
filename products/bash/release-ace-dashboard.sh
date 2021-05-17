@@ -23,14 +23,17 @@
 #   Overriding the namespace and release-name
 #     ./release-ace-dashboard.sh -n cp4i-prod -r prod
 
+
+dashboard_release_name="ace-dashboard-demo"
+namespace="cp4i"
+production="false"
+storage="ibmc-file-gold-gid"
+CURRENT_DIR=$(dirname $0)
+
 function usage() {
   echo "Usage: $0 -n <namespace> -r <dashboard-release-name>"
 }
 
-namespace="cp4i"
-dashboard_release_name="ace-dashboard-demo"
-storage="ibmc-file-gold-gid"
-production="false"
 while getopts "n:r:s:p" opt; do
   case ${opt} in
   n)
@@ -52,6 +55,9 @@ while getopts "n:r:s:p" opt; do
   esac
 done
 
+source $CURRENT_DIR/license-helper.sh
+echo "[DEBUG] ACE license: $(getACELicense $namespace)"
+
 echo "INFO: Release ACE Dashboard..."
 echo "INFO: Namespace: '$namespace'"
 echo "INFO: Dashboard Release Name: '$dashboard_release_name'"
@@ -64,22 +70,53 @@ if [[ "$production" == "true" ]]; then
 
 fi
 
+json=$(oc get configmap -n $namespace operator-info -o json 2> /dev/null)
+if [[ $? == 0 ]]; then
+  METADATA_NAME=$(echo $json | tr '\r\n' ' ' | jq -r '.data.METADATA_NAME')
+  METADATA_UID=$(echo $json | tr '\r\n' ' ' | jq -r '.data.METADATA_UID')
+fi
+
 cat <<EOF | oc apply -f -
 apiVersion: appconnect.ibm.com/v1beta1
 kind: Dashboard
 metadata:
   name: ${dashboard_release_name}
   namespace: ${namespace}
+  $(if [[ ! -z ${METADATA_UID} && ! -z ${METADATA_NAME} ]]; then
+  echo "ownerReferences:
+    - apiVersion: integration.ibm.com/v1beta1
+      kind: Demo
+      name: ${METADATA_NAME}
+      uid: ${METADATA_UID}"
+  fi)
 spec:
   license:
     accept: true
-    license: L-APEH-BPUCJK
+    license: $(getACELicense $namespace)
     use: ${use}
+  pod:
+    containers:
+      content-server:
+        resources:
+          limits:
+            cpu: 250m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 50Mi
+      control-ui:
+        resources:
+          limits:
+            cpu: 250m
+            memory: 250Mi
+          requests:
+            cpu: 50m
+            memory: 125Mi
   replicas: 1
   storage:
     class: ${storage}
     size: 5Gi
     type: persistent-claim
   useCommonServices: true
-  version: 11.0.0.10
+  version: 11.0.0.11-r2
 EOF

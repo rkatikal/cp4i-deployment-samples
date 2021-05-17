@@ -43,42 +43,13 @@ spec:
         requests:
           memory: "4Gi"
           cpu: "1"
-          ephemeral-storage: "1Gi"
+          ephemeral-storage: "5Gi"
         limits:
-          ephemeral-storage: "1Gi"
+          ephemeral-storage: "5Gi"
   volumes:
     - name: varlibcontainers
       persistentVolumeClaim:
         claimName: $(params.pvc)
-
----
-apiVersion: tekton.dev/v1beta1
-kind: Task
-metadata:
-  name: deploy-task
-spec:
-  params:
-    - name: imageTag
-      type: string
-      description: The image tag
-    - name: imageName
-      type: string
-      description: The image name
-    - name: releaseName
-      type: string
-      description: release name of the deployment
-    - name: releaseScript
-      type: string
-      description: release name of script
-    - name: namespace
-      type: string
-      description: release name of script
-  workspaces:
-    - name: git-source
-  steps:
-    - name: oc
-      image: quay.io/openshift/origin-cli:latest
-      script: "/workspace/git-source/products/bash/$(params.releaseScript) -n $(params.namespace) -r $(params.releaseName) -i image-registry.openshift-image-registry.svc:5000/$(params.namespace)/$(params.imageName):$(params.imageTag) {{TRACING}}"
 
 ---
 # this task is to push the images that our tested to test namespace
@@ -108,9 +79,9 @@ spec:
           image-registry.openshift-image-registry.svc:5000/{{NAMESPACE}}/$(params.imageName):$(params.imageTag)
         buildah tag \
           image-registry.openshift-image-registry.svc:5000/{{NAMESPACE}}/$(params.imageName):$(params.imageTag) \
-          image-registry.openshift-image-registry.svc:5000/{{NAMESPACE}}-ddd-test/$(params.imageName):$(params.imageTag)-test
+          image-registry.openshift-image-registry.svc:5000/{{NAMESPACE}}/$(params.imageName):$(params.imageTag)-test
         buildah push --tls-verify=false \
-          image-registry.openshift-image-registry.svc:5000/{{NAMESPACE}}-ddd-test/$(params.imageName):$(params.imageTag)-test
+          image-registry.openshift-image-registry.svc:5000/{{NAMESPACE}}/$(params.imageName):$(params.imageTag)-test
         df -h /var/lib/containers
       volumeMounts:
         - mountPath: /var/lib/containers
@@ -119,9 +90,9 @@ spec:
         requests:
           memory: "4Gi"
           cpu: "1"
-          ephemeral-storage: "1Gi"
+          ephemeral-storage: "5Gi"
         limits:
-          ephemeral-storage: "1Gi"
+          ephemeral-storage: "5Gi"
   volumes:
     - name: varlibcontainers
       persistentVolumeClaim:
@@ -134,18 +105,18 @@ metadata:
   name: api-test-e2e
 spec:
   params:
-    - name: namespaceSuffix
-      type: string
-      description: The namespace suffix
     - name: suffix
       type: string
       description: The suffix for the user and database name
+    - name: dddType
+      type: string
+      description: The ddd demo type
   workspaces:
     - name: git-source
   steps:
     - name: oc
-      image: quay.io/openshift/origin-cli:latest
-      script: "/workspace/git-source/DrivewayDentDeletion/Operators/test-api-e2e.sh -n {{NAMESPACE}} -s $(params.suffix) -p $(params.namespaceSuffix) -a"
+      image: quay.io/openshift/origin-cli:4.6.0
+      script: "/workspace/git-source/DrivewayDentDeletion/Operators/test-api-e2e.sh -n {{NAMESPACE}} -s $(params.suffix) -d $(params.dddType) -a"
 
 ---
 apiVersion: tekton.dev/v1beta1
@@ -167,5 +138,5 @@ spec:
     - name: git-source
   steps:
     - name: oc
-      image: quay.io/openshift/origin-cli:latest
+      image: quay.io/openshift/origin-cli:4.6.0
       script: "/workspace/git-source/products/bash/$(params.releaseScript) -n {{NAMESPACE}} -r $(params.releaseName) -e $(params.environment)"

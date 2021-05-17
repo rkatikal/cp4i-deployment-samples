@@ -76,7 +76,25 @@ CATALOG_NAME_DDD="${ORG_NAME_DDD}-catalog"
 PORG_ADMIN_EMAIL=${PORG_ADMIN_EMAIL:-"cp4i-admin@apiconnect.net"} # update to recipient of portal site creation email
 ACE_REGISTRATION_SECRET_NAME="ace-v11-service-creds"              # corresponds to registration obj currently hard-coded in configmap
 PROVIDER_SECRET_NAME="cp4i-admin-creds"                           # corresponds to credentials obj currently hard-coded in configmap
-CONFIGURATOR_IMAGE=${CONFIGURATOR_IMAGE:-"cp.icr.io/cp/apic/ibm-apiconnect-apiconnect-configurator:10.0.0.0-ifix1.0"}
+
+STAGING_AUTHS=$(oc get secret --namespace ${NAMESPACE} ibm-entitlement-key -o json | jq -r '.data.".dockerconfigjson"' | base64 --decode | jq -r '.auths["cp.stg.icr.io"]')
+if [[ "$STAGING_AUTHS" == "" || "$STAGING_AUTHS" == "null" ]]; then
+  REPO="cp.icr.io"
+else
+  REPO="cp.stg.icr.io"
+fi
+
+if [[ $(oc get secret cp4i-demo-apic-smtp-secret -n "$NAMESPACE") ]]; then
+  MAIL_SERVER_HOST=$(oc get secret cp4i-demo-apic-smtp-secret -n "$NAMESPACE" -o json | jq -r '.data.mailServerHost' | base64 --decode)
+  MAIL_SERVER_PORT=$(oc get secret cp4i-demo-apic-smtp-secret -n "$NAMESPACE" -o json | jq -r '.data.mailServerPort' | base64 --decode)
+  MAIL_SERVER_USERNAME=$(oc get secret cp4i-demo-apic-smtp-secret -n "$NAMESPACE" -o json | jq -r '.data.mailServerUsername' | base64 --decode)
+  MAIL_SERVER_PASSWORD=$(oc get secret cp4i-demo-apic-smtp-secret -n "$NAMESPACE" -o json | jq -r '.data.mailServerPassword' | base64 --decode)
+  PORG_ADMIN_EMAIL=$(oc get secret cp4i-demo-apic-smtp-secret -n "$NAMESPACE" -o json | jq -r '.data.emailAddress' | base64 --decode)
+else
+  echo -e "\nThe secret 'cp4i-demo-apic-smtp-secret' does not exist in the namespace '$NAMESPACE', continuing configuring APIC with default SMTP values..."
+fi
+
+CONFIGURATOR_IMAGE=${CONFIGURATOR_IMAGE:-"${REPO}/cp/apic/ibm-apiconnect-apiconnect-master@sha256:bb1fda3a0e0c07cb2fb6540240e3e3ef4305e1b327abbce2c6169954c5945d2a"}
 MAIL_SERVER_HOST=${MAIL_SERVER_HOST:-"smtp.mailtrap.io"}
 MAIL_SERVER_PORT=${MAIL_SERVER_PORT:-"2525"}
 MAIL_SERVER_USERNAME=${MAIL_SERVER_USERNAME:-"<your-username>"}
@@ -91,9 +109,6 @@ for i in $(seq 1 120); do
     break
   else
     echo "Waiting for APIC install to complete (Attempt $i of 120). Status: $APIC_STATUS"
-
-    ${CURRENT_DIR}/fix-cs-dependencies.sh
-
     kubectl get apic,pods,pvc -n $NAMESPACE
     echo "Checking again in one minute..."
     sleep 60
@@ -225,6 +240,13 @@ data:
         password: "${CLOUD_MANAGER_PASS}"
       provider:
         secret_name: ${PROVIDER_SECRET_NAME}
+    registry_settings:
+      admin_user_registry_urls:
+      - https://${API_EP}/api/user-registries/admin/cloud-manager-lur
+      - https://${API_EP}/api/user-registries/admin/common-services
+      provider_user_registry_urls:
+      - https://${API_EP}/api/user-registries/admin/api-manager-lur
+      - https://${API_EP}/api/user-registries/admin/common-services
     registrations:
       - registration:
           name: 'ace-v11'
@@ -341,7 +363,7 @@ EOF
 
 # wait for the job to complete
 echo "Waiting for configurator job to complete"
-kubectl wait --for=condition=complete --timeout=300s -n $NAMESPACE job/${RELEASE_NAME}-apic-configurator-post-install
+kubectl wait --for=condition=complete --timeout=12000s -n $NAMESPACE job/${RELEASE_NAME}-apic-configurator-post-install
 
 # pull together any necessary info from in-cluster resources
 PROVIDER_CREDENTIALS=$(kubectl get secret $PROVIDER_SECRET_NAME -n $NAMESPACE -o json | jq .data)
@@ -349,8 +371,8 @@ ACE_CREDENTIALS=$(kubectl get secret $ACE_REGISTRATION_SECRET_NAME -n $NAMESPACE
 
 for i in $(seq 1 60); do
   PORTAL_WWW_POD=$(kubectl get pods -n $NAMESPACE | grep -m1 "${RELEASE_NAME}-ptl.*www" | awk '{print $1}')
-  PORTAL_SITE_UUID=$(kubectl exec -n $NAMESPACE -it $PORTAL_WWW_POD -c admin /opt/ibm/bin/list_sites | awk '{print $1}')
-  PORTAL_SITE_RESET_URL=$(kubectl exec -n $NAMESPACE -it $PORTAL_WWW_POD -c admin /opt/ibm/bin/site_login_link $PORTAL_SITE_UUID | tail -1)
+  PORTAL_SITE_UUID=$(kubectl exec -n $NAMESPACE -it $PORTAL_WWW_POD -c admin -- /opt/ibm/bin/list_sites | awk '{print $1}')
+  PORTAL_SITE_RESET_URL=$(kubectl exec -n $NAMESPACE -it $PORTAL_WWW_POD -c admin -- /opt/ibm/bin/site_login_link $PORTAL_SITE_UUID | tail -1)
   if [[ "$PORTAL_SITE_RESET_URL" =~ "https://$PTL_WEB_EP" ]]; then
     printf "$tick"
     echo "[OK] Got the portal_site_password_reset_link"
@@ -374,13 +396,10 @@ api_manager_ui: https://$APIM_UI_EP/manager
 cloud_manager_ui: https://$CMC_UI_EP/admin
 platform_api: https://$API_EP/api
 consumer_api: https://$C_API_EP/consumer-api
-
 provider_credentials (api manager):
   username: ${API_MANAGER_USER}
   password: ${API_MANAGER_PASS}
-
 portal_site_password_reset_link: $PORTAL_SITE_RESET_URL
-
 ace_registration:
   client_id: ${ACE_CLIENT_ID}
   client_secret: ${ACE_CLIENT_SECRET}

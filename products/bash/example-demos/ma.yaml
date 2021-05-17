@@ -1,0 +1,22 @@
+apiVersion: integration.ibm.com/v1beta1
+kind: Demo
+metadata:
+  name: demos
+  namespace: cp4i
+spec:
+  general:
+    storage:
+      block:
+        class: cp4i-block-performance
+      file:
+        class: ibmc-file-gold-gid
+    license:
+      accept: true
+      ace: L-APEH-BPUCJK
+      apic: L-RJON-BRSHKF
+      ar: L-NCAN-BXWG76
+      demo: L-RJON-BYRMYW
+      mq: L-RJON-BN7PN3
+    samplesRepoBranch: main
+  demos:
+    mappingAssist: true

@@ -4,14 +4,18 @@ metadata:
   name: demos
   namespace: cp4i
 spec:
-  version: 2020.3.1
   general:
     storage:
       block:
         class: cp4i-block-performance
       file:
         class: ibmc-file-gold-gid
+    license:
+      accept: true
+      ace: L-APEH-BPUCJK
+      apic: L-RJON-BRSHKF
+      ar: L-NCAN-BXWG76
+      demo: L-RJON-BYRMYW
     samplesRepoBranch: main
   demos:
-    cognitiveCarRepair:
-      enabled: true
+    cognitiveCarRepair: true

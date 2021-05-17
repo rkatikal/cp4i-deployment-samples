@@ -23,13 +23,15 @@
 #   Overriding the namespace and release-name
 #     ./release-ace-designer.sh -n cp4i-prod -r prod
 
+designer_release_name="ace-designer-demo"
+namespace="cp4i"
+storage="ibmc-block-gold"
+CURRENT_DIR=$(dirname $0)
+
 function usage() {
   echo "Usage: $0 -n <namespace> -r <designer_release_name>"
 }
 
-namespace="cp4i"
-designer_release_name="ace-designer-demo"
-storage="ibmc-block-gold"
 while getopts "n:r:s:" opt; do
   case ${opt} in
   n)
@@ -47,9 +49,19 @@ while getopts "n:r:s:" opt; do
     ;;
   esac
 done
+
+source $CURRENT_DIR/license-helper.sh
+echo "[DEBUG] ACE license: $(getACELicense $namespace)"
+
 echo "INFO: Release ACE Designer..."
 echo "INFO: Namespace: '$namespace'"
 echo "INFO: Designer Release Name: '$designer_release_name'"
+
+json=$(oc get configmap -n $namespace operator-info -o json 2> /dev/null)
+if [[ $? == 0 ]]; then
+  METADATA_NAME=$(echo $json | tr '\r\n' ' ' | jq -r '.data.METADATA_NAME')
+  METADATA_UID=$(echo $json | tr '\r\n' ' ' | jq -r '.data.METADATA_UID')
+fi
 
 cat <<EOF | oc apply -f -
 apiVersion: appconnect.ibm.com/v1beta1
@@ -57,19 +69,28 @@ kind: DesignerAuthoring
 metadata:
   name: ${designer_release_name}
   namespace: ${namespace}
+  $(if [[ ! -z ${METADATA_UID} && ! -z ${METADATA_NAME} ]]; then
+  echo "ownerReferences:
+    - apiVersion: integration.ibm.com/v1beta1
+      kind: Demo
+      name: ${METADATA_NAME}
+      uid: ${METADATA_UID}"
+  fi)
 spec:
   couchdb:
+    replicas: 1
     storage:
+      class: ${storage}
       size: 10Gi
       type: persistent-claim
-      class: ${storage}
   designerFlowsOperationMode: local
-  license:
-    accept: true
-    license: L-APEH-BPUCJK
-    use: CloudPakForIntegrationNonProduction
-  replicas: 1
-  version: 11.0.0.10
   designerMappingAssist:
     enabled: true
+  license:
+    accept: true
+    license: $(getACELicense $namespace)
+    use: CloudPakForIntegrationNonProduction
+  replicas: 1
+  useCommonServices: true
+  version: 11.0.0.11-r2
 EOF

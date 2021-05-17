@@ -13,7 +13,7 @@
 #   - Logged into cluster on the OC CLI (https://docs.openshift.com/container-platform/4.4/cli_reference/openshift_cli/getting-started-cli.html)
 #
 # PARAMETERS:
-#   -n : <POSTGRES_NAMESPACE> (string), Defaults to 'postgres'
+#   -n : <POSTGRES_NAMESPACE> (string), Defaults to 'cp4i'
 #
 # USAGE:
 #   ./release-psql.sh
@@ -24,9 +24,9 @@ function usage() {
   exit 1
 }
 
-POSTGRES_NAMESPACE="postgres"
+POSTGRES_NAMESPACE="cp4i"
 
-while getopts "n:u:d:p:" opt; do
+while getopts "n:" opt; do
   case ${opt} in
   n)
     POSTGRES_NAMESPACE="$OPTARG"
@@ -37,8 +37,13 @@ while getopts "n:u:d:p:" opt; do
   esac
 done
 
+CURRENT_DIR=$(dirname $0)
+CURRENT_DIR_WITHOUT_DOT_SLASH=${CURRENT_DIR//.\//}
+
+echo -e "Postgres namespace for release-psql: '$POSTGRES_NAMESPACE'\n"
+
 echo "Installing PostgreSQL..."
-cat <<EOF >postgres.env
+cat <<EOF >/tmp/postgres.env
   MEMORY_LIMIT=2Gi
   NAMESPACE=openshift
   DATABASE_SERVICE_NAME=postgresql
@@ -47,8 +52,22 @@ cat <<EOF >postgres.env
   VOLUME_CAPACITY=1Gi
   POSTGRESQL_VERSION=10
 EOF
+
 oc create namespace ${POSTGRES_NAMESPACE}
-oc process -n openshift postgresql-persistent --param-file=postgres.env | oc apply -n ${POSTGRES_NAMESPACE} -f -
+
+json=$(oc get configmap -n ${POSTGRES_NAMESPACE} operator-info -o json 2> /dev/null)
+if [[ $? == 0 ]]; then
+  METADATA_NAME=$(echo $json | tr '\r\n' ' ' | jq -r '.data.METADATA_NAME')
+  METADATA_UID=$(echo $json | tr '\r\n' ' ' | jq -r '.data.METADATA_UID')
+fi
+
+if [[ ! -z ${METADATA_UID} && ! -z ${METADATA_NAME} ]]; then
+  oc process -n openshift postgresql-persistent --param-file=/tmp/postgres.env >/tmp/postgres.json
+  jq '.items[3].metadata += {"ownerReferences": [{"apiVersion": "integration.ibm.com/v1beta1", "kind": "Demo", "name": "'${METADATA_NAME}'", "uid": "'${METADATA_UID}'"}]}' /tmp/postgres.json >/tmp/postgres-owner-ref.json
+  oc apply -n ${POSTGRES_NAMESPACE} -f /tmp/postgres-owner-ref.json
+else
+  oc process -n openshift postgresql-persistent --param-file=/tmp/postgres.env | oc apply -n ${POSTGRES_NAMESPACE} -f -
+fi
 
 echo "INFO: Waiting for postgres to be ready in the ${POSTGRES_NAMESPACE} namespace"
 oc wait -n ${POSTGRES_NAMESPACE} --for=condition=available --timeout=20m deploymentconfig/postgresql
@@ -58,7 +77,7 @@ echo "INFO: Found DB pod as: ${DB_POD}"
 
 echo "INFO: Changing DB parameters for Debezium support"
 oc exec -n ${POSTGRES_NAMESPACE} -i $DB_POD \
-  -- psql <<EOF
+-- psql <<EOF
 ALTER SYSTEM SET wal_level = logical;
 ALTER SYSTEM SET max_wal_senders=10;
 ALTER SYSTEM SET max_replication_slots=10;
